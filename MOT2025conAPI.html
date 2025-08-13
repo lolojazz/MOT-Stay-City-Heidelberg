@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gestión MOT Hotel Studio</title>
+<style>
+  :root{
+    --ok:#28a745;
+    --nok:#dc3545;
+    --primary:#007bff;
+    --text:#222;
+    --muted:#6c757d;
+    --bg:#ffffff;
+    --border:#ddd;
+    --pending-bg:#fff3cd;
+    --pending-text:#856404;
+    --ok-bg:#d4edda;
+    --ok-text:#155724;
+    --prob-bg:#f8d7da;
+    --prob-text:#721c24;
+  }
+  body { font-family: Arial, sans-serif; margin: 20px; color:var(--text); background:var(--bg); }
+  h1 { text-align: center; margin-bottom: 10px; }
+  .topbar { display:flex; gap:10px; align-items:center; justify-content:center; margin-bottom:10px; flex-wrap: wrap;}
+  select, input[type="text"] { padding:8px 10px; font-size:1rem; }
+  #listaHabitaciones { max-height: 320px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; scroll-behavior: smooth; border-radius:8px; }
+  .room-item { cursor: pointer; padding: 10px; border-bottom: 1px solid #eee; font-size: 1rem; border-radius: 6px; display:flex; justify-content:space-between; align-items: center; gap:10px; }
+  .room-item:hover { background: #f7f7f7; }
+  .room-ok { background: var(--ok-bg); color: var(--ok-text); }
+  .room-pending { background: var(--pending-bg); color: var(--pending-text); font-weight: bold; }
+  .room-problems { background: var(--prob-bg); color: var(--prob-text); font-weight: bold; }
+  .room-main { font-weight:600; }
+  .room-meta { font-size:0.9rem; opacity:0.95; }
+  .room-badge { font-size:0.85rem; padding:2px 6px; border-radius:999px; border:1px solid rgba(0,0,0,.1); }
+  #checklist { margin-top: 20px; display:none; }
+  #checklist h2 { margin: 10px 0 0 0; }
+  #checklist small { color:var(--muted); }
+  #checklist .meta { margin:6px 0 14px 0; color:var(--muted); }
+  #checklist label {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid #ddd; gap: 10px;
+  }
+  #checklist label span { flex: 1; }
+  .check-buttons { display:flex; gap:6px; min-width: 140px; justify-content:flex-end; }
+  .check-buttons button {
+    padding:8px 14px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;
+    border-radius:6px; font-size:0.95rem; font-weight:700; transition: .2s;
+    user-select:none;
+  }
+  .check-buttons button.ok.selected { background: var(--ok); color:white; border-color: var(--ok); }
+  .check-buttons button.nok.selected { background: var(--nok); color:white; border-color: var(--nok); }
+  .actions { display:flex; gap:10px; margin-top:12px; }
+  .btn { padding:10px 14px; border:none; border-radius:8px; font-size:1rem; cursor:pointer; }
+  .btn-primary { background: var(--primary); color:white; }
+  .btn-save { background: var(--ok); color:white; }
+  .btn-secondary { background:#6c757d; color:white; }
+  #filterButtons button { margin-right: 5px; background: var(--primary); color: white; }
+  #filterButtons button:hover { filter:brightness(.95); }
+  #legendProblems { display:none; margin:10px 0; color:var(--prob-text); font-weight:600; }
+  #overlay {
+    position: fixed; inset:0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center; z-index: 9999;
+  }
+  #modal {
+    background: white; padding: 20px 24px; border-radius: 10px; max-width: 420px; width: 100%;
+    box-sizing: border-box; box-shadow:0 10px 30px rgba(0,0,0,.2);
+  }
+  #modal h3 { margin:0 0 10px 0; }
+  #modal label { display:block; margin-top:10px; font-weight:700; }
+  #modal button { margin-top: 14px; width: 100%; }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+
+<h1 id="tituloPrincipal">Gestión MOT - Hotel Studio</h1>
+
+<div class="topbar">
+  <label for="langSelect" class="muted" id="lblIdioma">Idioma:</label>
+  <select id="langSelect">
+    <option value="es">Español</option>
+    <option value="en">English</option>
+    <option value="de">Deutsch</option>
+  </select>
+
+  <span class="muted">•</span>
+
+  <strong id="filtroTitulo">Filtrar habitaciones:</strong>
+  <div id="filterButtons">
+    <button class="btn" onclick="filtrarHabitaciones('todas')" id="btnTodas">Todas</button>
+    <button class="btn" onclick="filtrarHabitaciones('pendientes')" id="btnPendientes">Pendientes</button>
+    <button class="btn" onclick="filtrarHabitaciones('revisadas')" id="btnRevisadas">Revisadas</button>
+    <button class="btn" onclick="filtrarHabitaciones('problemas')" id="btnProblemas">Con problemas</button>
+  </div>
+</div>
+
+<p id="legendProblems">⚠️ Hay habitaciones con problemas.</p>
+
+<div id="listaHabitaciones"></div>
+
+<div id="checklist">
+  <h2 id="tituloChecklist">Lista de chequeo habitación <span id="numeroHabitacion"></span></h2>
+  <p class="meta">
+    <strong id="labelUsuario">Usuario que realiza la revisión:</strong> <span id="usuarioChequeo"></span> ·
+    <strong id="labelFecha">Fecha de revisión:</strong> <span id="fechaChequeo"></span>
+  </p>
+  <form id="formChecklist"></form>
+  <div class="actions">
+    <button class="btn btn-save" id="btnGuardar" onclick="guardarChecklist(event)">Guardar</button>
+    <button class="btn btn-secondary" id="btnCerrar" onclick="cerrarChecklist(event)">Cerrar</button>
+  </div>
+</div>
+
+<!-- Modal de inicio -->
+<div id="overlay">
+  <div id="modal">
+    <h3 id="modalTitulo">Bienvenido</h3>
+    <p class="muted" id="modalSub">Los datos se guardan en este navegador.</p>
+    <label for="inputUsuario" id="labelUsuarioModal">Por favor, ingrese su nombre de usuario:</label>
+    <input type="text" id="inputUsuario" autocomplete="off" />
+    <label for="selectIdioma" id="labelIdiomaModal">Seleccione idioma / Select language / Sprache wählen:</label>
+    <select id="selectIdioma">
+      <option value="" disabled selected>--</option>
+      <option value="es">Español</option>
+      <option value="en">English</option>
+      <option value="de">Deutsch</option>
+    </select>
+    <button class="btn btn-primary" id="btnConfirmar">Confirmar</button>
+  </div>
+</div>
+
+<script>
+/* ========= TRADUCCIONES ========= */
+const TEXT = {
+  es: {
+    tituloPrincipal: "Gestión MOT - Hotel Studio",
+    lblIdioma: "Idioma:",
+    filtroTitulo: "Filtrar habitaciones:",
+    btnTodas: "Todas",
+    btnPendientes: "Pendientes",
+    btnRevisadas: "Revisadas",
+    btnProblemas: "Con problemas",
+    legendProblems: "⚠️ Hay habitaciones con problemas.",
+    tituloChecklist: "Lista de chequeo habitación",
+    labelUsuario: "Usuario que realiza la revisión:",
+    labelFecha: "Fecha de revisión:",
+    guardar: "Guardar",
+    cerrar: "Cerrar",
+    ok: "OK",
+    noOk: "No OK",
+    estado: { pending:"Pendiente", reviewed:"Revisada", problems:"Con problemas" },
+    diasRestantes: (n)=> n>=0 ? `· ${n} días restantes` : `· Vencida hace ${-n} días`,
+    meta: (u,f)=>`Rev: ${f || "-"} · Por: ${u || "-"}`,
+    modalTitulo: "Bienvenido",
+    modalSub: "Los datos se guardan en este navegador.",
+    modalUsuario: "Por favor, ingrese su nombre de usuario:",
+    modalIdioma: "Seleccione idioma / Select language / Sprache wählen:",
+    modalConfirmar: "Confirmar",
+    alertaUsuario: "No se puede continuar sin ingresar el usuario.",
+    alertaIdioma: "Seleccione un idioma.",
+    alertaGuardar: "Checklist guardada para la habitación"
+  },
+  en: {
+    tituloPrincipal: "MOT Management - Hotel Studio",
+    lblIdioma: "Language:",
+    filtroTitulo: "Filter rooms:",
+    btnTodas: "All",
+    btnPendientes: "Pending",
+    btnRevisadas: "Reviewed",
+    btnProblemas: "With problems",
+    legendProblems: "⚠️ There are rooms with problems.",
+    tituloChecklist: "Room checklist",
+    labelUsuario: "User performing the review:",
+    labelFecha: "Review date:",
+    guardar: "Save",
+    cerrar: "Close",
+    ok: "OK",
+    noOk: "No OK",
+    estado: { pending:"Pending", reviewed:"Reviewed", problems:"With problems" },
+    diasRestantes: (n)=> n>=0 ? `· ${n} days left` : `· Overdue by ${-n} days`,
+    meta: (u,f)=>`Rev: ${f || "-"} · By: ${u || "-"}`,
+    modalTitulo: "Welcome",
+    modalSub: "Data is stored in this browser.",
+    modalUsuario: "Please enter your username:",
+    modalIdioma: "Select language / Seleccione idioma / Sprache wählen:",
+    modalConfirmar: "Confirm",
+    alertaUsuario: "Cannot continue without entering username.",
+    alertaIdioma: "Please select a language.",
+    alertaGuardar: "Checklist saved for room"
+  },
+  de: {
+    tituloPrincipal: "MOT Verwaltung - Hotel Studio",
+    lblIdioma: "Sprache:",
+    filtroTitulo: "Zimmer filtern:",
+    btnTodas: "Alle",
+    btnPendientes: "Ausstehend",
+    btnRevisadas: "Überprüft",
+    btnProblemas: "Mit Problemen",
+    legendProblems: "⚠️ Es gibt Zimmer mit Problemen.",
+    tituloChecklist: "Raum-Checkliste",
+    labelUsuario: "Benutzer, der die Überprüfung durchführt:",
+    labelFecha: "Überprüfungsdatum:",
+    guardar: "Speichern",
+    cerrar: "Schließen",
+    ok: "OK",
+    noOk: "Nicht OK",
+    estado: { pending:"Ausstehend", reviewed:"Überprüft", problems:"Mit Problemen" },
+    diasRestantes: (n)=> n>=0 ? `· ${n} Tage übrig` : `· Überfällig seit ${-n} Tagen`,
+    meta: (u,f)=>`Prüf.: ${f || "-"} · Von: ${u || "-"}`,
+    modalTitulo: "Willkommen",
+    modalSub: "Daten werden in diesem Browser gespeichert.",
+    modalUsuario: "Bitte geben Sie Ihren Benutzernamen ein:",
+    modalIdioma: "Sprache wählen / Select language / Seleccione idioma:",
+    modalConfirmar: "Bestätigen",
+    alertaUsuario: "Fortfahren ohne Benutzernamen nicht möglich.",
+    alertaIdioma: "Bitte eine Sprache wählen.",
+    alertaGuardar: "Checkliste gespeichert für Zimmer"
+  }
+};
+
+/* ========= HABITACIONES Y TIPOS ========= */
+const ROOMS = [
+101,103,105,106,107,108,109,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,137,139,141,143,144,145,146,147,148,149,150,151,152,153,154,155,156,158,170,171,172,173,175,177,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,201,203,205,206,207,208,209,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,237,239,241,243,244,245,246,247,248,249,250,251,252,253,254,255,256,258,270,271,272,273,275,277,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,301,303,305,306,307,308,309,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,337,339,341,343,344,345,346,347,348,349,350,351,352,353,354,355,356,358,370,371,372,373,375,377,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,401,403,405,406,407,408,409,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,437,439,441,443,444,445,446,447,448,449,450,451,452,453,454,455,456,458,470,472,478,480,484,486,488,490,943,944,945,946,947,948,949,950,951,952,953,954,955,956,958,970,971,972,973,977,979,980,981,982,983
+];
+
+// Tipos correlativos (si no coincide la longitud, los sobrantes se marcan como "—")
+const ROOM_TYPES_RAW = `S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2A
+S2
+S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2T
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+2B62B
+1B4
+1B4
+1B4
+S2
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2A
+S2
+S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2T
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+2B62B
+1B4
+1B4
+1B4
+S2
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2A
+S2
+S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2T
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+2B62B
+1B4
+1B4
+1B4
+S2
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2A
+S2
+S2
+S2
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2T
+1B4
+1B4
+2B6B
+1B4B
+1B4B
+1B4B
+1B4B
+2B6B
+S2
+S2T
+S2
+S2T
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2
+S2T
+1B4
+1B4
+1B4
+1B4
+1B4
+1B4
+2B62B
+1B4
+1B4
+1B4
+S2`.split(/\s+/);
+
+const ROOM_TYPE_MAP = (() => {
+  const map = {};
+  for (let i=0; i<ROOMS.length; i++){
+    map[ROOMS[i]] = ROOM_TYPES_RAW[i] || "—";
+  }
+  return map;
+})();
+
+/* ========= CHECKLIST ITEMS (se traducen) ========= */
+const CHECK_ITEMS = {
+  es: [
+    "Batería de la puerta de entrada",
+    "Cierre automático de la puerta",
+    "Plano de salida de emergencia (detrás de la puerta de entrada)",
+    "Tope de la puerta",
+    "Techo correctamente ubicado",
+    "Puertas de los armarios en correcto estado",
+    "Caja fuerte abierta y con la batería en buen estado",
+    "Televisión y control remoto en funcionamiento",
+    "Mesas en correcto estado",
+    "Manijas de las ventanas y limitadores",
+    "Lámparas de pie y de pared en funcionamiento",
+    "Detector de humo",
+    "Sirena de incendios",
+    "Cama del cabecero",
+    "Cortinas",
+    "Enchufes",
+    "Luces de la cocina",
+    "Nevera (refrigerador)",
+    "Placa de inducción en funcionamiento y sin bloqueo",
+    "Microondas en funcionamiento con la luz LED cubierta",
+    "Enchufes de la cocina en funcionamiento",
+    "Filtro purificador de la cocina y luces",
+    "Gabinetes de la cocina",
+    "Lavavajillas",
+    "Pintura general en buen estado",
+    "Luces del baño",
+    "Ganchos para las toallas del baño",
+    "Secador de pelo",
+    "Desagüe del fregadero",
+    "Espejos",
+    "Desagüe de la ducha",
+    "Mampara de la ducha",
+    "Puertas del baño con sus protectores",
+    "Ventilación del baño",
+    "Silicona",
+    "Filtros del fan coil y aire acondicionado",
+    "Pisos",
+    "Zócalos"
+  ],
+  en: [
+    "Entrance door battery",
+    "Automatic door closing",
+    "Emergency exit plan (behind entrance door)",
+    "Door stopper",
+    "Ceiling correctly placed",
+    "Wardrobe doors in good condition",
+    "Safe open and battery in good condition",
+    "TV and remote control working",
+    "Tables in good condition",
+    "Window handles and limiters",
+    "Floor and wall lamps working",
+    "Smoke detector",
+    "Fire alarm siren",
+    "Headboard bed",
+    "Curtains",
+    "Power outlets",
+    "Kitchen lights",
+    "Refrigerator",
+    "Induction hob working and unlocked",
+    "Microwave working with LED light covered",
+    "Kitchen power outlets working",
+    "Kitchen purifier filter and lights",
+    "Kitchen cabinets",
+    "Dishwasher",
+    "General paint in good condition",
+    "Bathroom lights",
+    "Bathroom towel hooks",
+    "Hairdryer",
+    "Sink drain",
+    "Mirrors",
+    "Shower drain",
+    "Shower screen",
+    "Bathroom doors with protectors",
+    "Bathroom ventilation",
+    "Silicone",
+    "Fan coil and air conditioning filters",
+    "Floors",
+    "Baseboards"
+  ],
+  de: [
+    "Batterie der Eingangstür",
+    "Automatisches Türschließen",
+    "Notausgangsplan (hinter der Eingangstür)",
+    "Türstopper",
+    "Decke richtig platziert",
+    "Schranktüren in gutem Zustand",
+    "Tresor geöffnet und Batterie in gutem Zustand",
+    "Fernseher und Fernbedienung funktionieren",
+    "Tische in gutem Zustand",
+    "Fenstergriffe und Begrenzungen",
+    "Steh- und Wandleuchten funktionieren",
+    "Rauchmelder",
+    "Feueralarm-Sirene",
+    "Kopfteil des Bettes",
+    "Vorhänge",
+    "Steckdosen",
+    "Küchenbeleuchtung",
+    "Kühlschrank",
+    "Induktionskochfeld funktioniert und ist nicht blockiert",
+    "Mikrowelle funktioniert mit abgedecktem LED-Licht",
+    "Küchensteckdosen funktionieren",
+    "Küchenfilter und Beleuchtung",
+    "Küchenschränke",
+    "Geschirrspüler",
+    "Allgemeine Farbe in gutem Zustand",
+    "Badezimmerbeleuchtung",
+    "Handtuchhaken im Bad",
+    "Haartrockner",
+    "Spülbeckenablauf",
+    "Spiegel",
+    "Duschablauf",
+    "Duschabtrennung",
+    "Badezimmertüren mit Schutzvorrichtungen",
+    "Badezimmerbelüftung",
+    "Silikon",
+    "Filter für Fan Coil und Klimaanlage",
+    "Böden",
+    "Sockelleisten"
+  ]
+};
+
+/* ========= ESTADO (localStorage) =========
+Estructura:
+estadoHabitaciones = {
+  "101": { checklist:{0:true/false,...}, usuario:"Leandro", fecha:"ISO" },
+  ...
+}
+idioma (localStorage), usuario (sessionStorage)
+*/
+const KEY_STATE = "estadoHabitaciones";
+const KEY_LANG = "idiomaPreferido";
+const KEY_USER = "usuarioSesion";
+
+let idioma = localStorage.getItem(KEY_LANG) || "es";
+let usuarioActual = sessionStorage.getItem(KEY_USER) || null;
+let estadoHabitaciones = JSON.parse(localStorage.getItem(KEY_STATE) || "{}");
+
+let filtroActual = "todas";
+let habitacionSeleccionada = null;
+let estadoTemporal = {}; // {idx: true/false}
+
+/* ========= HELPERS ========= */
+const $ = (id)=>document.getElementById(id);
+const msDay = 24*60*60*1000;
+function fmtDate(d){
+  try{
+    const dt = (d instanceof Date)? d : new Date(d);
+    return dt.toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'});
+  }catch(_){ return "-"; }
+}
+function daysLeftFrom(fechaISO, daysWindow=90){
+  if(!fechaISO) return null;
+  const start = new Date(fechaISO);
+  const due = new Date(start.getTime() + daysWindow*msDay);
+  const today = new Date();
+  return Math.floor((due - today)/msDay); // puede ser negativo si vencido
+}
+function tieneProblemas(check){
+  if(!check) return false;
+  return Object.values(check).some(v=>v===false);
+}
+
+/* ========= UI TEXT BIND ========= */
+function applyTexts(){
+  const T = TEXT[idioma];
+  $("tituloPrincipal").textContent = T.tituloPrincipal;
+  $("lblIdioma").textContent = T.lblIdioma;
+  $("filtroTitulo").textContent = T.filtroTitulo;
+  $("btnTodas").textContent = T.btnTodas;
+  $("btnPendientes").textContent = T.btnPendientes;
+  $("btnRevisadas").textContent = T.btnRevisadas;
+  $("btnProblemas").textContent = T.btnProblemas;
+  $("legendProblems").textContent = T.legendProblems;
+
+  // Checklist header bits (el título se completa al abrir una habitación)
+  $("labelUsuario").textContent = T.labelUsuario;
+  $("labelFecha").textContent = T.labelFecha;
+  $("btnGuardar").textContent = T.guardar;
+  $("btnCerrar").textContent = T.cerrar;
+
+  // Modal
+  $("modalTitulo").textContent = T.modalTitulo;
+  $("modalSub").textContent = T.modalSub;
+  $("labelUsuarioModal").textContent = T.modalUsuario;
+  $("labelIdiomaModal").textContent = T.modalIdioma;
+  $("btnConfirmar").textContent = T.modalConfirmar;
+
+  // Selects
+  $("langSelect").value = idioma;
+  $("selectIdioma").value = idioma;
+}
+
+/* ========= RENDER LISTA ========= */
+function renderLista(filtro = filtroActual){
+  filtroActual = filtro;
+  const T = TEXT[idioma];
+  const cont = $("listaHabitaciones");
+  cont.innerHTML = "";
+
+  // ¿Hay problemas globales?
+  let hayProblemas = false;
+
+  ROOMS.forEach(num=>{
+    const estado = estadoHabitaciones[num];
+    let clase, estadoTxt;
+
+    if(!estado){
+      clase = "room-pending";
+      estadoTxt = T.estado.pending;
+    } else {
+      if(tieneProblemas(estado.checklist)){
+        clase = "room-problems";
+        estadoTxt = T.estado.problems;
+        hayProblemas = true;
+      } else {
+        clase = "room-ok";
+        estadoTxt = T.estado.reviewed;
+      }
+    }
+
+    // Filtrar
+    if(filtro==="pendientes" && estado) return;
+    if(filtro==="revisadas" && (!estado || tieneProblemas(estado?.checklist))) return;
+    if(filtro==="problemas" && (!estado || !tieneProblemas(estado?.checklist))) return;
+
+    const daysLeft = daysLeftFrom(estado?.fecha, 90);
+    const badge = daysLeft==null ? "" : ` ${T.diasRestantes(daysLeft)}`;
+    const tipo = ROOM_TYPE_MAP[num] || "—";
+    const meta = T.meta(estado?.usuario, estado?.fecha ? fmtDate(estado.fecha) : null);
+
+    const div = document.createElement("div");
+    div.className = `room-item ${clase}`;
+    div.onclick = ()=>abrirChecklist(num);
+
+    const left = document.createElement("div");
+    left.innerHTML = `<span class="room-main">#${num} · ${tipo}</span><br><span class="room-meta">${estadoTxt}${badge ? " " + badge : ""}</span>`;
+
+    const right = document.createElement("div");
+    right.className = "room-meta";
+    right.textContent = meta;
+
+    div.appendChild(left);
+    div.appendChild(right);
+    cont.appendChild(div);
+  });
+
+  // Leyenda de problemas solo si hay alguno
+  $("legendProblems").style.display = hayProblemas ? "block" : "none";
+}
+
+/* ========= CHECKLIST ========= */
+function abrirChecklist(num){
+  habitacionSeleccionada = num;
+  const T = TEXT[idioma];
+  const prev = estadoHabitaciones[num] || {};
+  estadoTemporal = {...(prev.checklist||{})};
+
+  $("checklist").style.display = "block";
+  $("numeroHabitacion").textContent = `#${num} · ${ROOM_TYPE_MAP[num] || "—"}`;
+  $("tituloChecklist").firstChild.nodeValue = T.tituloChecklist + " ";
+  $("usuarioChequeo").textContent = usuarioActual || "-";
+  $("fechaChequeo").textContent = fmtDate(new Date());
+
+  // Render ítems
+  const form = $("formChecklist");
+  form.innerHTML = "";
+  const items = CHECK_ITEMS[idioma];
+
+  items.forEach((txt, idx)=>{
+    const label = document.createElement("label");
+    const span = document.createElement("span");
+    span.textContent = txt;
+
+    const btns = document.createElement("div");
+    btns.className = "check-buttons";
+
+    const bOk = document.createElement("button");
+    bOk.type = "button";
+    bOk.className = "ok";
+    bOk.textContent = T.ok;
+    bOk.onclick = ()=>{
+      estadoTemporal[idx] = true;
+      actualizarBotonera(btns, idx);
+    };
+
+    const bNo = document.createElement("button");
+    bNo.type = "button";
+    bNo.className = "nok";
+    bNo.textContent = T.noOk;
+    bNo.onclick = ()=>{
+      estadoTemporal[idx] = false;
+      actualizarBotonera(btns, idx);
+    };
+
+    btns.appendChild(bOk);
+    btns.appendChild(bNo);
+    label.appendChild(span);
+    label.appendChild(btns);
+    form.appendChild(label);
+
+    // Estado previo
+    if(estadoTemporal[idx]===true) bOk.classList.add("selected");
+    else if(estadoTemporal[idx]===false) bNo.classList.add("selected");
+  });
+}
+
+function actualizarBotonera(container, idx){
+  const [okBtn, noBtn] = container.querySelectorAll("button");
+  okBtn.classList.remove("selected");
+  noBtn.classList.remove("selected");
+  if(estadoTemporal[idx]===true) okBtn.classList.add("selected");
+  if(estadoTemporal[idx]===false) noBtn.classList.add("selected");
+}
+
+function guardarChecklist(ev){
+  ev?.preventDefault?.();
+  if(!habitacionSeleccionada) return;
+  const num = habitacionSeleccionada;
+  estadoHabitaciones[num] = {
+    checklist: {...estadoTemporal},
+    usuario: usuarioActual,
+    fecha: new Date().toISOString()
+  };
+  localStorage.setItem(KEY_STATE, JSON.stringify(estadoHabitaciones));
+  alert(`${TEXT[idioma].alertaGuardar} ${num}`);
+  cerrarChecklist(ev);
+  renderLista(filtroActual);
+}
+
+function cerrarChecklist(ev){
+  ev?.preventDefault?.();
+  habitacionSeleccionada = null;
+  $("checklist").style.display = "none";
+}
+
+/* ========= FILTRO ========= */
+function filtrarHabitaciones(f){ renderLista(f); }
+
+/* ========= MODAL INICIO ========= */
+function abrirModal(){ $("overlay").style.display = "flex"; }
+function cerrarModal(){ $("overlay").style.display = "none"; }
+
+$("btnConfirmar").addEventListener("click",(e)=>{
+  e.preventDefault();
+  const name = $("inputUsuario").value.trim();
+  const lang = $("selectIdioma").value;
+  const T = TEXT[idioma];
+  if(!name){ alert(T.alertaUsuario); return; }
+  if(!lang){ alert(T.alertaIdioma); return; }
+  usuarioActual = name;
+  sessionStorage.setItem(KEY_USER, usuarioActual);
+  idioma = lang;
+  localStorage.setItem(KEY_LANG, idioma);
+  applyTexts();
+  cerrarModal();
+  renderLista("todas");
+});
+
+/* ========= SELECTOR DE IDIOMA SUPERIOR ========= */
+$("langSelect").addEventListener("change", ()=>{
+  idioma = $("langSelect").value;
+  localStorage.setItem(KEY_LANG, idioma);
+  applyTexts();
+  // Si hay checklist abierta, re-abrimos para re-pintar textos
+  if(habitacionSeleccionada!=null){
+    abrirChecklist(habitacionSeleccionada);
+  }
+  renderLista(filtroActual);
+});
+
+/* ========= INICIO ========= */
+window.addEventListener("load", ()=>{
+  // Idioma preferido
+  if(!TEXT[idioma]) idioma = "es";
+  $("langSelect").value = idioma;
+  $("selectIdioma").value = idioma;
+  applyTexts();
+
+  if(!usuarioActual){ // pedir usuario si no existe en esta sesión
+    abrirModal();
+  } else {
+    renderLista("todas");
+  }
+})
+
+function enviarDatos(habitacion, item, estado) {
+  const usuario = document.getElementById("usuario").value;
+  const contador90 = calcularContador(); // tu función actual
+
+  fetch("https://script.google.com/macros/s/AKfycbxb9hrNYuPRVY9zND5zhkY0WZEQgy7zLBYr3IN7qhM2MKoWtJpl3DD6t3kTxI1UmbJVSQ/exec", {
+    method: "POST",
+    body: JSON.stringify([{
+      usuario: usuario,
+      habitacion: habitacion,
+      item: item,
+      estado: estado,
+      contador90: contador90
+    }])
+  })
+  .then(response => response.json())
+  .then(data => console.log(data))
+  .catch(err => console.error(err));
+}
+
+
+;
+
+</script>
+
+</body>
+</html>
